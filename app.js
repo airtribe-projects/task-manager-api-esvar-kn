@@ -12,7 +12,6 @@ const jsonFilePath = path.join(__dirname, 'task.json');
 
 // Initialize an empty task list
 let taskList = [];
-
 // Read the JSON file and populate the taskList array
 fs.readFile(jsonFilePath, 'utf8', (err, data) => {
     if (err) {
@@ -133,56 +132,55 @@ function updateExistingTaskObject(existingTask, updateBody) {
 
 // Endpoint to retrive all the tasks in the list
 app.get('/tasks', (req, res) => {
-
-    let copyTaskList = [...taskList]; // Create a shallow copy to avoid mutating the original list
+    let filteredTasks = [...taskList]; // Create a shallow copy to avoid mutating the original list
 
     const { completed, sortBy, sortOrder } = req.query;
 
-    // If the completed query parameter is provided, filter tasks by completion status
+    // Handle filtering
     if (completed !== undefined) {
-        const lowerCaseCompleted = completed.toLowerCase(); // Standardize input
+        const lowerCaseCompleted = completed.toLowerCase();
         if (lowerCaseCompleted !== 'true' && lowerCaseCompleted !== 'false') {
-            return res.status(400).json({ error: "Invalid 'completed' query parameter. Must be 'true' or 'false'." });
+            return res.status(400).json({
+                error: "Invalid 'completed' query parameter. Must be 'true' or 'false'."
+            });
         }
-        const isCompletedBoolean = lowerCaseCompleted === 'true';
-        const filteredTasks = copyTaskList.filter(task => task.completed === isCompletedBoolean);
-        return res.status(200).json(filteredTasks);
+        const isCompleted = lowerCaseCompleted === 'true';
+        filteredTasks = filteredTasks.filter(task => task.completed === isCompleted);
     }
 
-    // mutating the original task list
+    // Handle sorting
     const validSortFields = ['id', 'title', 'description', 'completed', 'createdAt', 'priority'];
     if (sortBy !== undefined) {
         if (!validSortFields.includes(sortBy)) {
-            return res.status(400).json({ error: `Invalid 'sortBy' parameter. Must be one of: ${validSortFields.join(', ')}.` });
+            return res.status(400).json({
+                error: `Invalid 'sortBy' parameter. Must be one of: ${validSortFields.join(', ')}.`
+            });
         }
-        const effectiveSortOrder = (!sortOrder ? 'asc' : sortOrder).toLowerCase(); // Default to 'asc'
-        if (effectiveSortOrder !== 'asc' && effectiveSortOrder !== 'desc') {
-            return res.status(400).json({ error: "Invalid 'sortOrder' parameter. Must be 'asc' or 'desc'." });
-        }
-        // Sort the task list based on the specified field and order
-        const sortedList = copyTaskList.sort((a, b) => {
-            const aValue = a[sortBy];
-            const bValue = b[sortBy];
 
-            if (aValue < bValue) {
-                return effectiveSortOrder === 'asc' ? -1 : 1; // a comes before b (asc) or b comes before a (desc)
-            }
-            if (aValue > bValue) {
-                return effectiveSortOrder === 'asc' ? 1 : -1; // a comes after b (asc) or b comes after a (desc)
-            }
-            return 0; // Values are equal, maintain original relative order
+        const order = (sortOrder || 'asc').toLowerCase();
+        if (order !== 'asc' && order !== 'desc') {
+            return res.status(400).json({
+                error: "Invalid 'sortOrder' parameter. Must be 'asc' or 'desc'."
+            });
+        }
+
+        filteredTasks.sort((a, b) => {
+            const aVal = a[sortBy];
+            const bVal = b[sortBy];
+
+            if (aVal < bVal) return order === 'asc' ? -1 : 1;
+            if (aVal > bVal) return order === 'asc' ? 1 : -1;
+            return 0;
         });
-        return res.status(200).json(sortedList);
     }
 
-    res.status(200).json(copyTaskList);
+    // Return the final result after filtering and/or sorting
+    return res.status(200).json(filteredTasks);
 });
 
 // Endpoint to retrieve tasks by their priority
 app.get('/tasks/priority/:priority', (req, res) => {
-
     let copyTaskList = [...taskList]; // Create a shallow copy to avoid mutating the original list
-
     // Extract the priority from the request parameters
     const priority = req.params.priority.toLowerCase();
     // Validate the priority value
@@ -202,9 +200,7 @@ app.get('/tasks/priority/:priority', (req, res) => {
 
 // Endpoint to retrive a specific task bcleay its ID
 app.get('/tasks/:id', (req, res) => {
-
     let copyTaskList = [...taskList]; // Create a shallow copy to avoid mutating the original list
-
     // Extract the task ID from the request parameters
     const taskId = req.params.id;
     // Find the task in the task list by its ID
@@ -220,29 +216,23 @@ app.get('/tasks/:id', (req, res) => {
 
 // Endpoint to add a new task to the list
 app.post('/tasks', (req, res) => {
-
-    let copyTaskList = [...taskList]; // Create a shallow copy to avoid mutating the original list
-
     const newTask = req.body;
     const validationError = validateTaskData(newTask, true);
     if (validationError) {
         return res.status(400).json({ error: validationError });
     }
-    const maxId = copyTaskList.reduce((max, task) => { return Math.max(max, task.id); }, 0);
+    const maxId = taskList.reduce((max, task) => { return Math.max(max, task.id); }, 0);
     const newTaskId = maxId + 1; // Generate a new ID for the task
     // Assign the new task an ID and add it to the task list
     const newTaskAdded = createNewTaskObject(newTask, newTaskId);
     // Add the new task to the task list
-    copyTaskList.push(newTaskAdded);
+    taskList.push(newTaskAdded);
     // Return the updated task list with a 201 status code
     res.status(201).json(newTaskAdded);
 });
 
 // Endpoint to update an existing task by its ID
 app.put('/tasks/:id', (req, res) => {
-
-    let copyTaskList = [...taskList]; // Create a shallow copy to avoid mutating the original list
-
     const taskId = req.params.id;
     const taskUpdate = req.body;
     const taskIndex = taskList.findIndex(task => task.id === parseInt(taskId));
@@ -255,26 +245,23 @@ app.put('/tasks/:id', (req, res) => {
         return res.status(400).json({ error: validationError });
     }
     // Create a new task object with the updated details
-    const updatesTask = updateExistingTaskObject(copyTaskList[taskIndex], taskUpdate);
+    const updatedTask = updateExistingTaskObject(taskList[taskIndex], taskUpdate);
     // Return the updated task list
-    res.status(200).json(updatesTask);
+    res.status(200).json(updatedTask);
 });
 
 // Endpoint to delete a task by its ID
 app.delete('/tasks/:id', (req, res) => {
-    
-    let copyTaskList = [...taskList]; // Create a shallow copy to avoid mutating the original list
-
     const taskId = req.params.id;
-    const taskIndex = copyTaskList.findIndex((task) => task.id === parseInt(taskId));
+    const taskIndex = taskList.findIndex((task) => task.id === parseInt(taskId));
     // If the task is not found, return a 404 status code
     if (taskIndex === -1) {
         return res.status(404).json({ error: `Task with ID '${taskId}' not found.` });
     }
     // Remove the task from the list
-    copyTaskList.splice(taskIndex, 1);
+    taskList.splice(taskIndex, 1);
     // Return the updated task list
-    res.status(200).json(copyTaskList);
+    res.status(200).json(taskList);
 
 });
 
@@ -284,5 +271,7 @@ app.listen(port, (err) => {
     }
     console.log(`Server is listening on ${port}`);
 });
+
+
 
 module.exports = app;
